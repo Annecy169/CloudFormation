@@ -398,6 +398,16 @@ Resources:
           - REGIONAL
       RegionalCertificateArn: !Ref DNSCert
 
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId : !Ref Route53ZoneID
+      Name: !Ref Route53DNSName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiCustomDomain.RegionalDomainName
+        HostedZoneId: !GetAtt ApiCustomDomain.RegionalHostedZoneId
+        
   ## Start API Specific
 
   APIStack:
@@ -451,12 +461,28 @@ Resources:
 
   ## End API Specific
 
-  DNSRecord:
-    Type: AWS::Route53::RecordSet
-    Properties:
-      HostedZoneId : !Ref Route53ZoneID
-      Name: !Ref Route53DNSName
-      Type: A
-      AliasTarget:
-        DNSName: !GetAtt ApiCustomDomain.RegionalDomainName
-        HostedZoneId: !GetAtt ApiCustomDomain.RegionalHostedZoneId
+Outputs:
+
+  APIGatewayOutput:
+    Description: Information about the value
+    Value: !Ref ApiGateway
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiGateway
+  
+  APIDNSName:
+    Description: API used DNS name
+    Value: !Ref Route53DNSName
+    Export:
+      Name: !Sub ${AWS::StackName}-DNSName
+
+  EC2IAMRoleForECS:
+    Description: IAM Role created for ECS and EC2
+    Value: !Ref EC2IAMRole
+    Export:
+      Name: !Sub ${AWS::StackName}-Role
+
+  EC2VPCForECS:
+    Description: VPC created for ECS and EC2
+    Value: !Ref EC2VPC
+    Export:
+      Name: !Sub ${AWS::StackName}-VPC
