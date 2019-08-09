@@ -320,17 +320,6 @@ Resources:
       VPCZoneIdentifier:
         - !Ref EC2SubnetB
 
-  DNSRecord:
-    Type: AWS::Route53::RecordSet
-    DependsOn: EC2LoadBalancer
-    Properties:
-      HostedZoneId : !Ref Route53ZoneID
-      Name: !Ref Route53DNSName
-      Type: A
-      AliasTarget:
-        DNSName: !GetAtt EC2LoadBalancer.DNSName
-        HostedZoneId: !GetAtt EC2LoadBalancer.CanonicalHostedZoneID
-
   DNSCert:
     Type: AWS::CertificateManager::Certificate
     Properties:
@@ -389,3 +378,85 @@ Resources:
         - Name: AutoScalingGroupName
           Value: !Ref SpotAutoScalingB
       MetricName: GroupInServiceInstances
+
+  ApiGateway:
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Description: API Gateway
+      Name: !Ref Route53DNSName
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+  
+  ApiCustomDomain:
+    Type: AWS::ApiGateway::DomainName
+    DependsOn: ApiGateway
+    Properties: 
+      DomainName: !Ref Route53DNSName
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      RegionalCertificateArn: !Ref DNSCert
+
+  ## Start API Specific
+
+  APIStack:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: european-fuel
+
+  APIMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: GET
+      ResourceId: !Ref APIStack
+      RestApiId: !Ref ApiGateway
+      AuthorizationType: NONE
+      Integration:
+        Type: HTTP
+        IntegrationHttpMethod: GET
+        IntegrationResponses:
+          - StatusCode: 200
+        Uri: !Sub http://${EC2LoadBalancer.DNSName}
+      MethodResponses:
+        - StatusCode: 200
+      OperationName: !Ref Route53DNSName
+
+  APIDeployment:
+    DependsOn: APIMethod
+    Type: 'AWS::ApiGateway::Deployment'
+    Properties:
+      RestApiId: !Ref ApiGateway
+
+  APIStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: api
+      Description: API Stage
+      RestApiId: !Ref ApiGateway
+      DeploymentId: !Ref APIDeployment
+      MethodSettings:
+        - ResourcePath: /
+          HttpMethod: GET
+
+  APIMapping:
+    Type: 'AWS::ApiGateway::BasePathMapping'
+    DependsOn: ApiCustomDomain
+    Properties:
+      DomainName: !Ref ApiCustomDomain
+      RestApiId: !Ref ApiGateway
+      Stage: !Ref APIStage
+
+  ## End API Specific
+
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId : !Ref Route53ZoneID
+      Name: !Ref Route53DNSName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiCustomDomain.RegionalDomainName
+        HostedZoneId: !GetAtt ApiCustomDomain.RegionalHostedZoneId
