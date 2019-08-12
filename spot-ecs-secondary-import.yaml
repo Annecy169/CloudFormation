@@ -1,11 +1,112 @@
 Parameters:  
-  APIGatewayOutput:
-    Description: Information about the value
-    Type: AWS::ApiGateway::RestApi
-    Default: 
-      Fn::ImportValue:
-        !Sub "${ecs-xander-api}-APIDNSName"
+  CFStack:
+    Description: Cloud formation stack name
+    Type: String
+  
+  APIPath1:
+    Description: 1st Path of the API Method
+    Type: String
+
+  Route53ZoneID:
+    Description: Route 53 Hosted Zone ImageId
+    Type: AWS::Route53::HostedZone::Id
+    MinLength: 8
+
+  Route53DNSName:
+    Description: DNS Name for Route53
+    Type: String
+    MinLength: 3
 
 Resources:
-  EC2InternetGateway:
-    Type: AWS::EC2::InternetGateway
+  ApiGateway:
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Description: API Gateway
+      Name: !Ref Route53DNSName
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+  
+  ApiCustomDomain:
+    Type: AWS::ApiGateway::DomainName
+    DependsOn: ApiGateway
+    Properties: 
+      DomainName: !Ref Route53DNSName
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      RegionalCertificateArn: !Ref DNSCert
+
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId : !Ref Route53ZoneID
+      Name: !Ref Route53DNSName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiCustomDomain.RegionalDomainName
+        HostedZoneId: !GetAtt ApiCustomDomain.RegionalHostedZoneId
+
+  DNSCert:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref Route53DNSName
+      DomainValidationOptions:
+            - DomainName: !Ref Route53DNSName
+              ValidationDomain: !Ref Route53DNSName
+      ValidationMethod: DNS
+
+  APIDeployment:
+    DependsOn: APIMethod1
+    Type: 'AWS::ApiGateway::Deployment'
+    Properties:
+      RestApiId: !Ref ApiGateway
+
+  APIStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: api
+      Description: API Stage
+      RestApiId: !Ref ApiGateway
+      DeploymentId: !Ref APIDeployment
+      MethodSettings:
+        - ResourcePath: !Ref APIPath1  # API Specific
+          HttpMethod: GET             # API Specific
+
+  APIMapping:
+    Type: 'AWS::ApiGateway::BasePathMapping'
+    DependsOn: ApiCustomDomain
+    Properties:
+      DomainName: !Ref ApiCustomDomain
+      RestApiId: !Ref ApiGateway
+      Stage: !Ref APIStage
+
+## Start API Specific
+
+  APIStack1:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: !Ref APIPath1
+
+  APIMethod1:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: GET
+      ResourceId: !Ref APIStack1
+      RestApiId: !Ref ApiGateway
+      AuthorizationType: NONE
+      Integration:
+        Type: HTTP
+        IntegrationHttpMethod: GET
+        IntegrationResponses:
+          - StatusCode: 200
+        Uri:
+          Fn::ImportValue:
+            !Sub "${CFStack}-EC2LBDNSName"
+      MethodResponses:
+        - StatusCode: 200
+      OperationName: !Ref Route53DNSName
+
+  ## End API Specific

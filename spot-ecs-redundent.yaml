@@ -49,16 +49,6 @@ Parameters:
     Description: ECS Cluster name
     Type: String
     Default: EC2ECSCloudFormation
-
-  Route53ZoneID:
-    Description: Route 53 Hosted Zone ImageId
-    Type: AWS::Route53::HostedZone::Id
-    MinLength: 8
-
-  Route53DNSName:
-    Description: DNS Name for Route53
-    Type: String
-    MinLength: 3
   
   DataDogAPIKey:
     Description: API key for DataDogAPIKey
@@ -320,31 +310,8 @@ Resources:
       VPCZoneIdentifier:
         - !Ref EC2SubnetB
 
-  DNSCert:
-    Type: AWS::CertificateManager::Certificate
-    Properties:
-      DomainName: !Ref Route53DNSName
-      DomainValidationOptions:
-            - DomainName: !Ref Route53DNSName
-              ValidationDomain: !Ref Route53DNSName
-      ValidationMethod: DNS
-
-  HTTPSEC2Listner:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    DependsOn: DNSCert
-    Properties: 
-      Certificates: 
-        - CertificateArn: !Ref DNSCert
-      DefaultActions: 
-        - Type: forward
-          TargetGroupArn: !Ref EC2TargetGroup
-      LoadBalancerArn: !Ref EC2LoadBalancer
-      Port: 443
-      Protocol: HTTPS
-
   ScaleUpPolicy:
     Type: AWS::AutoScaling::ScalingPolicy
-    DependsOn: DNSCert # One of the last actions to occur
     Properties:
       AdjustmentType: ChangeInCapacity
       AutoScalingGroupName: !Sub NonSpot${ECSClusterName}AutoScaling
@@ -353,7 +320,6 @@ Resources:
 
   ScaleDownPolicy:
     Type: AWS::AutoScaling::ScalingPolicy
-    DependsOn: DNSCert # One of the last actions to occur
     Properties:
       AdjustmentType: ChangeInCapacity
       AutoScalingGroupName: !Sub NonSpot${ECSClusterName}AutoScaling
@@ -379,101 +345,7 @@ Resources:
           Value: !Ref SpotAutoScalingB
       MetricName: GroupInServiceInstances
 
-  ApiGateway:
-    Type: 'AWS::ApiGateway::RestApi'
-    Properties:
-      Description: API Gateway
-      Name: !Ref Route53DNSName
-      EndpointConfiguration:
-        Types:
-          - REGIONAL
-  
-  ApiCustomDomain:
-    Type: AWS::ApiGateway::DomainName
-    DependsOn: ApiGateway
-    Properties: 
-      DomainName: !Ref Route53DNSName
-      EndpointConfiguration:
-        Types:
-          - REGIONAL
-      RegionalCertificateArn: !Ref DNSCert
-
-  DNSRecord:
-    Type: AWS::Route53::RecordSet
-    Properties:
-      HostedZoneId : !Ref Route53ZoneID
-      Name: !Ref Route53DNSName
-      Type: A
-      AliasTarget:
-        DNSName: !GetAtt ApiCustomDomain.RegionalDomainName
-        HostedZoneId: !GetAtt ApiCustomDomain.RegionalHostedZoneId
-        
-  ## Start API Specific
-
-  APIStack:
-    Type: 'AWS::ApiGateway::Resource'
-    Properties:
-      RestApiId: !Ref ApiGateway
-      ParentId: !GetAtt ApiGateway.RootResourceId
-      PathPart: european-fuel
-
-  APIMethod:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      HttpMethod: GET
-      ResourceId: !Ref APIStack
-      RestApiId: !Ref ApiGateway
-      AuthorizationType: NONE
-      Integration:
-        Type: HTTP
-        IntegrationHttpMethod: GET
-        IntegrationResponses:
-          - StatusCode: 200
-        Uri: !Sub http://${EC2LoadBalancer.DNSName}
-      MethodResponses:
-        - StatusCode: 200
-      OperationName: !Ref Route53DNSName
-
-  ## End API Specific
-
-  APIDeployment:
-    DependsOn: ApiGateway
-    Type: 'AWS::ApiGateway::Deployment'
-    Properties:
-      RestApiId: !Ref ApiGateway
-
-  APIStage:
-    Type: AWS::ApiGateway::Stage
-    Properties:
-      StageName: api
-      Description: API Stage
-      RestApiId: !Ref ApiGateway
-      DeploymentId: !Ref APIDeployment
-      MethodSettings:
-        - ResourcePath: european-fuel
-          HttpMethod: GET
-
-  APIMapping:
-    Type: 'AWS::ApiGateway::BasePathMapping'
-    DependsOn: ApiCustomDomain
-    Properties:
-      DomainName: !Ref ApiCustomDomain
-      RestApiId: !Ref ApiGateway
-      Stage: !Ref APIStage
-
 Outputs:
-
-  APIGatewayOutput:
-    Description: API Gateway
-    Value: !Ref ApiGateway
-    Export:
-      Name: !Sub ${AWS::StackName}-ApiGateway
-  
-  APIDNSName:
-    Description: API used DNS name
-    Value: !Ref Route53DNSName
-    Export:
-      Name: !Sub ${AWS::StackName}-DNSName
 
   EC2IAMRoleForECS:
     Description: IAM Role created for ECS and EC2
@@ -486,3 +358,9 @@ Outputs:
     Value: !Ref EC2VPC
     Export:
       Name: !Sub ${AWS::StackName}-VPC
+
+  EC2LoadBalancerDNSName:
+    Description: DNS Name for EC2 LoadBalancer
+    Value: !Sub http://${EC2LoadBalancer.DNSName}
+    Export:
+      Name: !Sub ${AWS::StackName}-EC2LBDNSName
