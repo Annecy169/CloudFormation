@@ -1,0 +1,11 @@
+Parameters:  
+  APIGatewayOutput:
+    Description: Information about the value
+    Type: AWS::ApiGateway::RestApi
+    Default: 
+      Fn::ImportValue:
+        !Sub "${ecs-xander-api}-APIDNSName"
+
+Resources:
+  EC2InternetGateway:
+    Type: AWS::EC2::InternetGateway

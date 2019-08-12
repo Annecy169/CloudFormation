@@ -434,8 +434,10 @@ Resources:
         - StatusCode: 200
       OperationName: !Ref Route53DNSName
 
+  ## End API Specific
+
   APIDeployment:
-    DependsOn: APIMethod
+    DependsOn: ApiGateway
     Type: 'AWS::ApiGateway::Deployment'
     Properties:
       RestApiId: !Ref ApiGateway
@@ -448,7 +450,7 @@ Resources:
       RestApiId: !Ref ApiGateway
       DeploymentId: !Ref APIDeployment
       MethodSettings:
-        - ResourcePath: /
+        - ResourcePath: european-fuel
           HttpMethod: GET
 
   APIMapping:
@@ -459,12 +461,10 @@ Resources:
       RestApiId: !Ref ApiGateway
       Stage: !Ref APIStage
 
-  ## End API Specific
-
 Outputs:
 
   APIGatewayOutput:
-    Description: Information about the value
+    Description: API Gateway
     Value: !Ref ApiGateway
     Export:
       Name: !Sub ${AWS::StackName}-ApiGateway
